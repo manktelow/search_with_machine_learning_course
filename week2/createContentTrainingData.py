@@ -5,9 +5,11 @@ from tqdm import tqdm
 import os
 import xml.etree.ElementTree as ET
 from pathlib import Path
+import pandas as pd
+from itertools import chain
 
 def transform_name(product_name):
-    # IMPLEMENT
+    # transformed the product names on the command line - simpler
     return product_name
 
 # Directory for product data
@@ -31,7 +33,6 @@ if os.path.isdir(output_dir) == False:
 
 if args.input:
     directory = args.input
-# IMPLEMENT: Track the number of items in each category and only output if above the min
 min_products = args.min_products
 names_as_labels = False
 if args.label == 'name':
@@ -63,7 +64,14 @@ if __name__ == '__main__':
     print("Writing results to %s" % output_file)
     with multiprocessing.Pool() as p:
         all_labels = tqdm(p.imap(_label_filename, files), total=len(files))
+        all_labels = list(chain.from_iterable(all_labels))
+
+        lables_data_frame = pd.DataFrame(all_labels, columns=['category', 'name'])
+        grouped_categories = lables_data_frame.groupby('category').agg({'name': 'count'}).reset_index()
+        filtered_categories = set(grouped_categories.loc[grouped_categories['name'] > min_products, 'category'].to_list())
+        filtered_labels_data_frame = lables_data_frame[lables_data_frame['category'].isin(filtered_categories)]
+
         with open(output_file, 'w') as output:
-            for label_list in all_labels:
-                for (cat, name) in label_list:
-                    output.write(f'__label__{cat} {name}\n')
+            for _, row in filtered_labels_data_frame.iterrows():
+                print(label)
+                output.write(f'__label__{row["category"]} {row["name"]}\n')
