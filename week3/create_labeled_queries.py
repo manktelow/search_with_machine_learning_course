@@ -22,6 +22,7 @@ general.add_argument("--output", default=output_file_name, help="the file to out
 args = parser.parse_args()
 output_file_name = args.output
 
+min_queries = None
 if args.min_queries:
     min_queries = int(args.min_queries)
 
@@ -48,9 +49,28 @@ parents_df = pd.DataFrame(list(zip(categories, parents)), columns =['category', 
 queries_df = pd.read_csv(queries_file_name)[['category', 'query']]
 queries_df = queries_df[queries_df['category'].isin(categories)]
 
-# IMPLEMENT ME: Convert queries to lowercase, and optionally implement other normalization, like stemming.
+# Convert queries to lowercase, removes extra whitespace and performs stemming.
+queries_df['query'] = (queries_df['query'].str.lower()
+                       .str.replace('[^a-z0-9]+', ' ', regex=True)
+                       .str.replace('\s+', ' ', regex=True)
+                       .apply(lambda x: ' '.join([stemmer.stem(word) for word in x.split()])))
 
-# IMPLEMENT ME: Roll up categories to ancestors to satisfy the minimum number of queries per category.
+if min_queries is not None:
+    while True:
+        count_df = queries_df.groupby('category').agg(total=('query', 'count')).reset_index()
+
+        queries_df = (queries_df.merge(count_df, on='category', how='left').
+                      merge(parents_df, on='category', how='left'))
+
+        # replace category with root category if parent is null
+        queries_df.loc[queries_df['parent'].isnull(), 'parent'] = root_category_id
+        # replace parent category if does not min number of queries
+        queries_df.loc[queries_df['total'] < min_queries, 'category'] = queries_df['parent']
+
+        queries_df = queries_df[['category', 'query']]
+
+        if (count_df['total'] < min_queries).sum() == 0:
+            break
 
 # Create labels in fastText format.
 queries_df['label'] = '__label__' + queries_df['category']

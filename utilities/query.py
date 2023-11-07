@@ -11,11 +11,16 @@ from urllib.parse import urljoin
 import pandas as pd
 import fileinput
 import logging
+import fasttext
+import nltk
 
+stemmer = nltk.stem.PorterStemmer()
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 logging.basicConfig(format='%(levelname)s:%(message)s')
+
+model = fasttext.load_model("/workspace/datasets/fasttext/query_classifier.bin")
 
 # expects clicks and impressions to be in the row
 def create_prior_queries_from_group(
@@ -188,14 +193,33 @@ def create_query(user_query, click_prior_query, filters, sort="_score", sortDir=
 
 def search(client, user_query, index="bbuy_products", sort="_score", sortDir="desc"):
     #### W3: classify the query
+    categories, scores = model.predict(normalize_query(user_query), k=5)
+
+    filters = None
+    categoryPathIds = []
+    prob = 0
+
+    if len(categories) > 0:
+        for category, score in zip(categories, scores):
+            if prob > 0.5:
+                break
+            categoryPathIds.append(category.replace('__label__', ''))
+            prob += score
+
+        filters = [{"terms": {"categoryPathIds": categoryPathIds}}]
+
     #### W3: create filters and boosts
     # Note: you may also want to modify the `create_query` method above
-    query_obj = create_query(user_query, click_prior_query=None, filters=None, sort=sort, sortDir=sortDir, source=["name", "shortDescription"])
+    query_obj = create_query(user_query, click_prior_query=None, filters=filters, sort=sort, sortDir=sortDir, source=["name", "categoryPathIds", "shortDescription"])
     logging.info(query_obj)
     response = client.search(query_obj, index=index)
     if response and response['hits']['hits'] and len(response['hits']['hits']) > 0:
         hits = response['hits']['hits']
         print(json.dumps(response, indent=2))
+
+def normalize_query(query):
+    query = query.lower().replace('[^a-z0-9]+', ' ').replace('\s+', ' ').split(' ')
+    return ' '.join([stemmer.stem(word) for word in query])
 
 
 if __name__ == "__main__":
@@ -249,4 +273,3 @@ if __name__ == "__main__":
 
         print(query_prompt)
 
-    
