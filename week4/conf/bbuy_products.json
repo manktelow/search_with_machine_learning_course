@@ -156,6 +156,14 @@
       "digital": {
         "type": "boolean"
       },
+      "embedding": {
+        "type": "knn_vector",
+        "dimension": 384,
+        "method": {
+          "space_type": "cosinesimil",
+          "engine": "nmslib"
+        }
+      },
       "features": {
         "type": "text",
         "fields": {
